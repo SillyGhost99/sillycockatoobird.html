@@ -1,0 +1,807 @@
+YPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="A Chrome Dino-style pixel-art flying cockatoo bird game with power-ups and color customization.">
+  <title>Cockatoo Flyer – Pixel Bird Game</title>
+  <style>
+    /* ── Reset & Base ──────────────────────────────────── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+    :root {
+      --bg-dark:  #1a1a2e;
+      --bg-mid:   #16213e;
+      --accent:   #e94560;
+      --gold:     #f5c542;
+      --sky-top:  #4a90d9;
+      --sky-bot:  #87ceeb;
+      --green:    #2ecc71;
+      --white:    #f0f0f0;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: linear-gradient(135deg, var(--bg-dark), var(--bg-mid));
+      font-family: 'Press Start 2P', monospace;
+      color: var(--white);
+      overflow: hidden;
+    }
+
+    /* ── Container ─────────────────────────────────────── */
+    #game-wrapper {
+      position: relative;
+      width: 800px;
+      border: 4px solid var(--accent);
+      border-radius: 8px;
+      box-shadow: 0 0 30px rgba(233, 69, 96, .4),
+                  0 0 60px rgba(233, 69, 96, .15);
+      overflow: hidden;
+      background: #000;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      image-rendering: pixelated;   /* keep pixel-art crisp */
+      image-rendering: crisp-edges;
+    }
+
+    /* ── Overlay panels (start / game-over) ────────────── */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0, 0, 0, .72);
+      backdrop-filter: blur(3px);
+      z-index: 10;
+      transition: opacity .3s;
+    }
+    .overlay.hidden { display: none; }
+
+    .overlay h1 {
+      font-size: 22px;
+      color: var(--gold);
+      text-shadow: 2px 2px 0 #000;
+      margin-bottom: 18px;
+      letter-spacing: 2px;
+    }
+    .overlay h2 {
+      font-size: 14px;
+      color: var(--accent);
+      margin-bottom: 24px;
+    }
+    .overlay p {
+      font-size: 10px;
+      margin: 6px 0;
+      color: #ccc;
+    }
+
+    /* Color picker row */
+    .color-row {
+      display: flex;
+      gap: 24px;
+      margin: 14px 0 22px;
+      align-items: center;
+    }
+    .color-row label {
+      font-size: 9px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .color-row input[type="color"] {
+      width: 44px;
+      height: 44px;
+      border: 3px solid var(--white);
+      border-radius: 6px;
+      cursor: pointer;
+      background: none;
+      padding: 0;
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: 'Press Start 2P', monospace;
+      font-size: 13px;
+      padding: 12px 32px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #fff;
+      background: var(--accent);
+      box-shadow: 0 4px 0 #b8354d, 0 6px 16px rgba(233, 69, 96, .35);
+      transition: transform .1s, box-shadow .1s;
+      margin-top: 8px;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 0 #b8354d, 0 8px 20px rgba(233, 69, 96, .5);
+    }
+    .btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 2px 0 #b8354d;
+    }
+    .btn-small { font-size: 10px; padding: 10px 22px; }
+
+    .score-display {
+      font-size: 12px;
+      margin: 6px 0;
+    }
+    .best { color: var(--gold); }
+
+    /* HUD (in-game) */
+    #hud {
+      position: absolute;
+      top: 12px; left: 16px; right: 16px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 5;
+    }
+    #hud span {
+      font-size: 11px;
+      text-shadow: 1px 1px 0 #000;
+    }
+    #powerup-label {
+      color: var(--green);
+      animation: pulse 1s infinite alternate;
+    }
+    @keyframes pulse { to { opacity: .5; } }
+  </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+  <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+  <!-- HUD (score + power-up) -->
+  <div id="hud" class="hidden">
+    <span id="score-hud">Score: 0</span>
+    <span id="powerup-label"></span>
+    <span id="best-hud" class="best">Best: 0</span>
+  </div>
+
+  <!-- ── Start Screen ─────────────────────────────── -->
+  <div id="start-screen" class="overlay">
+    <h1>🐦 COCKATOO FLYER</h1>
+    <p>A Chrome-Dino style pixel adventure</p>
+
+    <div class="color-row">
+      <label>
+        Body
+        <input type="color" id="body-color" value="#f0f0f0">
+      </label>
+      <label>
+        Crest
+        <input type="color" id="crest-color" value="#f5c542">
+      </label>
+    </div>
+
+    <button class="btn" id="play-btn">▶ PLAY</button>
+    <p style="margin-top:14px; font-size:8px; color:#888;">Press SPACE or click to play</p>
+  </div>
+
+  <!-- ── Game Over Screen ─────────────────────────── -->
+  <div id="gameover-screen" class="overlay hidden">
+    <h2>GAME OVER</h2>
+    <p class="score-display">Score: <span id="final-score">0</span></p>
+    <p class="score-display best">Best: <span id="final-best">0</span></p>
+    <button class="btn btn-small" id="restart-btn">↻ RESTART</button>
+    <p style="margin-top:10px; font-size:8px; color:#888;">Press SPACE to restart</p>
+  </div>
+</div>
+
+<script>
+/* ================================================================
+   COCKATOO FLYER – Chrome-Dino-style Pixel Bird Game
+   A single-file canvas game: HTML + CSS + vanilla JS
+   ================================================================ */
+
+// ── DOM refs ──────────────────────────────────────────────
+const canvas      = document.getElementById('gameCanvas');
+const ctx         = canvas.getContext('2d');
+const W           = canvas.width;               // 800
+const H           = canvas.height;              // 400
+
+const startScreen   = document.getElementById('start-screen');
+const gameoverScreen= document.getElementById('gameover-screen');
+const hud           = document.getElementById('hud');
+const scoreHud      = document.getElementById('score-hud');
+const bestHud       = document.getElementById('best-hud');
+const powerupLabel  = document.getElementById('powerup-label');
+const finalScoreEl  = document.getElementById('final-score');
+const finalBestEl   = document.getElementById('final-best');
+const bodyColorIn   = document.getElementById('body-color');
+const crestColorIn  = document.getElementById('crest-color');
+const playBtn       = document.getElementById('play-btn');
+const restartBtn    = document.getElementById('restart-btn');
+
+// ── Game State ────────────────────────────────────────────
+let state = 'start';   // 'start' | 'playing' | 'over'
+let score = 0;
+let bestScore = parseInt(localStorage.getItem('cockatoo_best') || '0', 10);
+bestHud.textContent = `Best: ${bestScore}`;
+
+// Speed multiplier (increases with distance, affected by speed power-up)
+let baseSpeed   = 3;
+let speedMult   = 1;
+let gameSpeed   = baseSpeed;
+
+// Timers
+let obstacleTimer = 0;
+let berryTimer    = 0;
+let lastTime      = 0;
+let frameDelta    = 0;
+
+// ── Bird ──────────────────────────────────────────────────
+const bird = {
+  x: 100,
+  y: H / 2 - 20,
+  w: 40,              // pixel grid width
+  h: 32,              // pixel grid height
+  vy: 0,              // vertical velocity
+  gravity: 0.45,      // downward acceleration per frame
+  flapPower: -7,      // upward impulse on flap
+  bodyColor:  '#f0f0f0',
+  crestColor: '#f5c542',
+  wingPhase: 0,       // animation phase for wing flap
+};
+
+// ── Obstacles array ───────────────────────────────────────
+let obstacles = [];
+// ── Berries array ─────────────────────────────────────────
+let berries   = [];
+
+// ── Power-ups ─────────────────────────────────────────────
+let activeEffect    = null;      // 'speed' | 'invincible' | null
+let effectTimer     = 0;         // seconds remaining
+const SPEED_DURATION      = 4;   // seconds
+const INVINCIBLE_DURATION = 4;   // seconds
+
+// ── Parallax layers (clouds, mountains, ground) ──────────
+const clouds = [];
+for (let i = 0; i < 8; i++) {
+  clouds.push({
+    x: Math.random() * W,
+    y: 20 + Math.random() * 100,
+    w: 40 + Math.random() * 60,
+    h: 16 + Math.random() * 14,
+    speed: 0.3 + Math.random() * 0.4,
+  });
+}
+
+// Stars (decorative)
+const stars = [];
+for (let i = 0; i < 30; i++) {
+  stars.push({
+    x: Math.random() * W,
+    y: Math.random() * 160,
+    r: 1 + Math.random() * 1.5,
+    blink: Math.random() * Math.PI * 2,
+  });
+}
+
+// Ground offset for scrolling
+let groundOffset = 0;
+
+/* ================================================================
+   DRAWING HELPERS – Pixel-art style (rectangles, no curves)
+   ================================================================ */
+
+// ── Draw the cockatoo bird using pixel blocks ──────────────
+function drawBird() {
+  const px = 4;   // pixel size for the bird sprite
+  const bx = bird.x;
+  const by = bird.y;
+  const body  = bird.bodyColor;
+  const crest = bird.crestColor;
+  const beak  = '#e87d2f';
+  const eye   = '#111';
+  const wing  = shadeColor(body, -30);
+  const tail  = shadeColor(body, -20);
+
+  // Wing flap animation (toggle between up and down)
+  bird.wingPhase += 0.15;
+  const wingUp = Math.sin(bird.wingPhase) > 0;
+
+  /* Crest (three feathers above head) */
+  ctx.fillStyle = crest;
+  ctx.fillRect(bx + 5*px, by - 3*px, px, 3*px);
+  ctx.fillRect(bx + 6*px, by - 4*px, px, 4*px);
+  ctx.fillRect(bx + 7*px, by - 3*px, px, 3*px);
+
+  /* Head */
+  ctx.fillStyle = body;
+  ctx.fillRect(bx + 4*px, by,       4*px, 3*px);
+  ctx.fillRect(bx + 3*px, by + px,  px,   2*px);
+
+  /* Eye */
+  ctx.fillStyle = eye;
+  ctx.fillRect(bx + 6*px, by + px, px, px);
+
+  /* Beak */
+  ctx.fillStyle = beak;
+  ctx.fillRect(bx + 8*px, by + px, 2*px, px);
+  ctx.fillRect(bx + 8*px, by + 2*px, px, px);
+
+  /* Body */
+  ctx.fillStyle = body;
+  ctx.fillRect(bx + 2*px, by + 3*px, 6*px, 3*px);
+  ctx.fillRect(bx + 1*px, by + 4*px, px,    2*px);
+
+  /* Wing */
+  ctx.fillStyle = wing;
+  if (wingUp) {
+    ctx.fillRect(bx + 3*px, by + 2*px, 3*px, px);
+    ctx.fillRect(bx + 2*px, by + px,   2*px, px);
+  } else {
+    ctx.fillRect(bx + 3*px, by + 6*px, 3*px, px);
+    ctx.fillRect(bx + 2*px, by + 7*px, 2*px, px);
+  }
+
+  /* Tail */
+  ctx.fillStyle = tail;
+  ctx.fillRect(bx,        by + 3*px, 2*px, px);
+  ctx.fillRect(bx - px,   by + 4*px, 2*px, px);
+
+  /* Invincibility glow effect */
+  if (activeEffect === 'invincible') {
+    ctx.save();
+    ctx.globalAlpha = 0.25 + 0.15 * Math.sin(Date.now() / 100);
+    ctx.strokeStyle = '#00ffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(bx - px - 2, by - 4*px - 2, 11*px + 4, 12*px + 4);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  /* Speed trail effect */
+  if (activeEffect === 'speed') {
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#ff6b35';
+    for (let i = 1; i <= 3; i++) {
+      ctx.fillRect(bx - i * 8, by + 3*px + Math.sin(Date.now()/80 + i) * 4, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+}
+
+// ── Shade a hex color by a percentage ─────────────────────
+function shadeColor(hex, percent) {
+  let r = parseInt(hex.slice(1,3), 16);
+  let g = parseInt(hex.slice(3,5), 16);
+  let b = parseInt(hex.slice(5,7), 16);
+  r = Math.min(255, Math.max(0, r + Math.round(r * percent / 100)));
+  g = Math.min(255, Math.max(0, g + Math.round(g * percent / 100)));
+  b = Math.min(255, Math.max(0, b + Math.round(b * percent / 100)));
+  return '#' + [r, g, b].map(c => c.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Draw a pixel-art tree obstacle ────────────────────────
+function drawTree(ob) {
+  const px = 4;
+  // Trunk
+  ctx.fillStyle = '#6b4226';
+  ctx.fillRect(ob.x + ob.w/2 - px*1.5, ob.y + ob.h * 0.45, px*3, ob.h * 0.55);
+
+  // Canopy – stacked rectangles for a chunky pixel look
+  ctx.fillStyle = ob.color || '#2d7a3a';
+  const cw = ob.w;
+  const ch = ob.h * 0.55;
+  ctx.fillRect(ob.x, ob.y, cw, ch);
+  ctx.fillRect(ob.x + px, ob.y - px, cw - 2*px, px);
+  // darker shade on bottom row of canopy
+  ctx.fillStyle = shadeColor(ob.color || '#2d7a3a', -20);
+  ctx.fillRect(ob.x + px, ob.y + ch - px, cw - 2*px, px);
+}
+
+// ── Draw a pixel-art pole obstacle ────────────────────────
+function drawPole(ob) {
+  const px = 4;
+  // Main pole
+  ctx.fillStyle = ob.color || '#888';
+  ctx.fillRect(ob.x, ob.y, ob.w, ob.h);
+  // Cap
+  ctx.fillStyle = shadeColor(ob.color || '#888', 20);
+  ctx.fillRect(ob.x - px, ob.y, ob.w + 2*px, px*2);
+  // Base
+  ctx.fillRect(ob.x - px, ob.y + ob.h - px, ob.w + 2*px, px*2);
+}
+
+// ── Draw a berry ──────────────────────────────────────────
+function drawBerry(b) {
+  const px = 4;
+  ctx.fillStyle = b.color;
+  // Berry body (pixel circle: 3×3 grid minus corners)
+  ctx.fillRect(b.x + px, b.y,      px, 3*px);
+  ctx.fillRect(b.x,      b.y + px, 3*px, px);
+  // Leaf
+  ctx.fillStyle = '#3a8f3a';
+  ctx.fillRect(b.x + px, b.y - px, px, px);
+  ctx.fillRect(b.x + 2*px, b.y - px, px, px);
+
+  // Sparkle to make berries noticeable
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.4 + 0.4 * Math.sin(Date.now()/200 + b.x)) + ')';
+  ctx.fillRect(b.x + px, b.y, px/2, px/2);
+}
+
+// ── Draw parallax background ──────────────────────────────
+function drawBackground() {
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H - 60);
+  grad.addColorStop(0, '#2b3a67');
+  grad.addColorStop(0.5, '#4a90d9');
+  grad.addColorStop(1, '#87ceeb');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H - 60);
+
+  // Stars
+  stars.forEach(s => {
+    s.blink += 0.02;
+    const alpha = 0.3 + 0.5 * Math.abs(Math.sin(s.blink));
+    ctx.fillStyle = `rgba(255, 255, 230, ${alpha})`;
+    ctx.fillRect(Math.floor(s.x), Math.floor(s.y), Math.ceil(s.r), Math.ceil(s.r));
+  });
+
+  // Clouds (parallax – scroll slower than obstacles)
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+  clouds.forEach(c => {
+    // Draw blocky cloud
+    const px = 4;
+    ctx.fillRect(c.x,           c.y + px, c.w, c.h - px);
+    ctx.fillRect(c.x + px,      c.y,      c.w - 2*px, c.h);
+    ctx.fillRect(c.x + c.w*0.2, c.y - px, c.w*0.3, px);
+    // Scroll
+    c.x -= c.speed * speedMult;
+    if (c.x + c.w < 0) {
+      c.x = W + Math.random() * 100;
+      c.y = 20 + Math.random() * 100;
+    }
+  });
+
+  // Distant mountains
+  ctx.fillStyle = '#3a5a3a';
+  for (let mx = -groundOffset % 200 - 200; mx < W + 200; mx += 200) {
+    drawPixelMountain(mx, H - 100, 180, 60);
+  }
+  ctx.fillStyle = '#2d4a2d';
+  for (let mx = -groundOffset % 160 - 160 + 80; mx < W + 200; mx += 160) {
+    drawPixelMountain(mx, H - 80, 140, 40);
+  }
+
+  // Ground
+  ctx.fillStyle = '#5a3a1a';
+  ctx.fillRect(0, H - 60, W, 60);
+  ctx.fillStyle = '#6b4a2a';
+  ctx.fillRect(0, H - 60, W, 8);
+  // Ground texture (pixel dots scrolling)
+  ctx.fillStyle = '#4a2e14';
+  const gp = 4;
+  for (let gx = -Math.floor(groundOffset) % 16; gx < W; gx += 16) {
+    ctx.fillRect(gx, H - 50, gp, gp);
+    ctx.fillRect(gx + 8, H - 36, gp, gp);
+  }
+  // Grass tufts on ground line
+  ctx.fillStyle = '#3e8d3e';
+  for (let gx = -Math.floor(groundOffset * 0.9) % 24; gx < W; gx += 24) {
+    ctx.fillRect(gx, H - 64, gp, gp);
+    ctx.fillRect(gx + gp, H - 68, gp, gp * 2);
+    ctx.fillRect(gx + 2*gp, H - 64, gp, gp);
+  }
+}
+
+function drawPixelMountain(x, baseY, w, h) {
+  const px = 4;
+  const steps = Math.floor(h / px);
+  for (let i = 0; i < steps; i++) {
+    const rowW = w - (i * w / steps);
+    ctx.fillRect(x + (w - rowW) / 2, baseY - i * px, rowW, px);
+  }
+}
+
+/* ================================================================
+   GAME LOGIC
+   ================================================================ */
+
+// ── Spawn an obstacle ─────────────────────────────────────
+function spawnObstacle() {
+  const type = Math.random() < 0.55 ? 'tree' : 'pole';
+  let ob;
+  if (type === 'tree') {
+    const h = 80 + Math.random() * 80;
+    ob = {
+      type: 'tree',
+      x: W + 10,
+      y: H - 60 - h,
+      w: 36 + Math.random() * 16,
+      h: h,
+      color: ['#2d7a3a','#1e6b2e','#3a9a4a'][Math.floor(Math.random()*3)],
+    };
+  } else {
+    const h = 60 + Math.random() * 120;
+    const fromTop = Math.random() < 0.35;   // some poles hang from top
+    ob = {
+      type: 'pole',
+      x: W + 10,
+      y: fromTop ? 0 : H - 60 - h,
+      w: 16,
+      h: h,
+      color: ['#777','#999','#b55'][Math.floor(Math.random()*3)],
+    };
+  }
+  obstacles.push(ob);
+}
+
+// ── Spawn a berry ─────────────────────────────────────────
+function spawnBerry() {
+  const effectType = Math.random() < 0.5 ? 'speed' : 'invincible';
+  berries.push({
+    x: W + 10,
+    y: 60 + Math.random() * (H - 180),
+    w: 12,
+    h: 12,
+    color: effectType === 'speed' ? '#ff4444' : '#4488ff',
+    effect: effectType,
+  });
+}
+
+// ── Check AABB collision ──────────────────────────────────
+function collides(a, b) {
+  return a.x < b.x + b.w &&
+         a.x + a.w > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.h > b.y;
+}
+
+// ── Bird hitbox (slightly smaller than visual for fairness) ─
+function birdHitbox() {
+  return { x: bird.x + 6, y: bird.y + 4, w: bird.w - 10, h: bird.h - 6 };
+}
+
+/* ================================================================
+   UPDATE LOOP
+   ================================================================ */
+function update(dt) {
+  if (state !== 'playing') return;
+
+  // ── Increase game speed over time (like Chrome Dino) ────
+  baseSpeed = 3 + score / 800;
+  const speedBonus = activeEffect === 'speed' ? 1.5 : 1;
+  speedMult = speedBonus;
+  gameSpeed = baseSpeed * speedMult;
+
+  // ── Bird physics: gravity pulls down, flap pushes up ────
+  bird.vy += bird.gravity;
+  bird.y  += bird.vy;
+
+  // Clamp bird within canvas
+  if (bird.y < 0) { bird.y = 0; bird.vy = 0; }
+  if (bird.y + bird.h > H - 60) {
+    bird.y = H - 60 - bird.h;
+    bird.vy = 0;
+  }
+
+  // ── Scroll ground offset for texture scrolling ──────────
+  groundOffset += gameSpeed;
+
+  // ── Obstacles: move left, remove off-screen ─────────────
+  obstacles.forEach(ob => { ob.x -= gameSpeed; });
+  obstacles = obstacles.filter(ob => ob.x + ob.w > -50);
+
+  // ── Berries: move left ──────────────────────────────────
+  berries.forEach(b => { b.x -= gameSpeed; });
+  berries = berries.filter(b => b.x + b.w > -20);
+
+  // ── Spawn timers ────────────────────────────────────────
+  obstacleTimer -= dt;
+  if (obstacleTimer <= 0) {
+    spawnObstacle();
+    // Interval shrinks as speed increases, with randomness
+    obstacleTimer = (1.2 + Math.random() * 1.2) / speedMult;
+  }
+  berryTimer -= dt;
+  if (berryTimer <= 0) {
+    spawnBerry();
+    berryTimer = 3 + Math.random() * 4;
+  }
+
+  // ── Collision: obstacles ────────────────────────────────
+  const bh = birdHitbox();
+  for (const ob of obstacles) {
+    if (collides(bh, ob)) {
+      if (activeEffect === 'invincible') {
+        // Pass through – optionally flash
+      } else {
+        gameOver();
+        return;
+      }
+    }
+  }
+
+  // ── Collision: berries (power-up pickup) ────────────────
+  for (let i = berries.length - 1; i >= 0; i--) {
+    if (collides(bh, berries[i])) {
+      activatePowerUp(berries[i].effect);
+      berries.splice(i, 1);
+    }
+  }
+
+  // ── Score: increases with time (like distance) ──────────
+  score += gameSpeed * 0.15;
+
+  // ── Power-up timer countdown ────────────────────────────
+  if (activeEffect) {
+    effectTimer -= dt;
+    if (effectTimer <= 0) {
+      activeEffect = null;
+      effectTimer = 0;
+    }
+  }
+}
+
+// ── Activate a power-up ───────────────────────────────────
+function activatePowerUp(type) {
+  activeEffect = type;
+  effectTimer = type === 'speed' ? SPEED_DURATION : INVINCIBLE_DURATION;
+}
+
+// ── Game over handler ─────────────────────────────────────
+function gameOver() {
+  state = 'over';
+  const finalScore = Math.floor(score);
+  if (finalScore > bestScore) {
+    bestScore = finalScore;
+    localStorage.setItem('cockatoo_best', String(bestScore));
+  }
+  finalScoreEl.textContent = finalScore;
+  finalBestEl.textContent  = bestScore;
+  hud.classList.add('hidden');
+  gameoverScreen.classList.remove('hidden');
+}
+
+/* ================================================================
+   DRAW LOOP
+   ================================================================ */
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  drawBackground();
+
+  // Obstacles
+  obstacles.forEach(ob => {
+    if (ob.type === 'tree') drawTree(ob);
+    else drawPole(ob);
+  });
+
+  // Berries
+  berries.forEach(b => drawBerry(b));
+
+  // Bird
+  drawBird();
+
+  // HUD update
+  if (state === 'playing') {
+    scoreHud.textContent  = `Score: ${Math.floor(score)}`;
+    bestHud.textContent   = `Best: ${bestScore}`;
+
+    if (activeEffect === 'speed') {
+      powerupLabel.textContent = `⚡ Speed x1.5 (${Math.ceil(effectTimer)}s)`;
+      powerupLabel.style.color = '#ff6b35';
+    } else if (activeEffect === 'invincible') {
+      powerupLabel.textContent = `🛡 Invincible (${Math.ceil(effectTimer)}s)`;
+      powerupLabel.style.color = '#00ccff';
+    } else {
+      powerupLabel.textContent = '';
+    }
+  }
+}
+
+/* ================================================================
+   MAIN LOOP
+   ================================================================ */
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);   // cap delta
+  lastTime = timestamp;
+
+  update(dt);
+  draw();
+
+  requestAnimationFrame(gameLoop);
+}
+
+/* ================================================================
+   INPUT HANDLING
+   ================================================================ */
+
+// Flap action – bird jumps upward
+function flap() {
+  if (state === 'playing') {
+    bird.vy = bird.flapPower;
+  }
+}
+
+// Keyboard: Space / ArrowUp
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    if (state === 'start') startGame();
+    else if (state === 'playing') flap();
+    else if (state === 'over') restartGame();
+  }
+});
+
+// Mouse / touch on canvas → flap (while playing)
+canvas.addEventListener('mousedown', () => {
+  if (state === 'playing') flap();
+});
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (state === 'playing') flap();
+}, { passive: false });
+
+/* ================================================================
+   GAME FLOW: start / restart
+   ================================================================ */
+
+function startGame() {
+  // Read chosen colors from color pickers
+  bird.bodyColor  = bodyColorIn.value;
+  bird.crestColor = crestColorIn.value;
+
+  // Reset bird position & velocity
+  bird.y  = H / 2 - 20;
+  bird.vy = 0;
+
+  // Reset game state
+  score         = 0;
+  obstacles     = [];
+  berries       = [];
+  activeEffect  = null;
+  effectTimer   = 0;
+  obstacleTimer = 1.5;
+  berryTimer    = 4;
+  baseSpeed     = 3;
+  speedMult     = 1;
+  gameSpeed     = baseSpeed;
+  groundOffset  = 0;
+
+  state = 'playing';
+  startScreen.classList.add('hidden');
+  gameoverScreen.classList.add('hidden');
+  hud.classList.remove('hidden');
+}
+
+function restartGame() {
+  // Keep current colors
+  startGame();
+}
+
+// Button listeners
+playBtn.addEventListener('click', startGame);
+restartBtn.addEventListener('click', restartGame);
+
+// Color-customization: update bird colors live on the start screen
+bodyColorIn.addEventListener('input', () => { bird.bodyColor = bodyColorIn.value; });
+crestColorIn.addEventListener('input', () => { bird.crestColor = crestColorIn.value; });
+
+/* ================================================================
+   INIT – draw the first frame and start the loop
+   ================================================================ */
+lastTime = performance.now();
+requestAnimationFrame(gameLoop);
+</script>
+
+</body>
+</html>
